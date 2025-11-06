@@ -1,0 +1,223 @@
+{
+  "slots": [
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "L6",
+    "L7",
+    "M1",
+    "M2",
+    "M3",
+    "M4",
+    "M5",
+    "M6",
+    "M7",
+    "W1",
+    "W2",
+    "W3",
+    "W4",
+    "W5",
+    "W6",
+    "W7",
+    "J1",
+    "J2",
+    "J3",
+    "J4",
+    "J5",
+    "J6",
+    "J7",
+    "V1",
+    "V2",
+    "V3",
+    "V4",
+    "V5",
+    "V6",
+    "V7"
+  ],
+  "vertices": [
+    {
+      "course": "CBM1005",
+      "section": "1",
+      "activity": "Catedra",
+      "teacher": "MUÑOZ JUAN ESTEBAN EDUARDO",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 40
+    },
+    {
+      "course": "CBM1005",
+      "section": "1",
+      "activity": "Ayudantia",
+      "teacher": "AYUDANTE_ED1",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 40
+    },
+    {
+      "course": "CBM1006",
+      "section": "1",
+      "activity": "Catedra",
+      "teacher": "CONTRERAS JAIME GILBERTO",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 40
+    },
+    {
+      "course": "CBM1006",
+      "section": "1",
+      "activity": "Ayudantia",
+      "teacher": "AYUDANTE_C3_1",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 40
+    },
+    {
+      "course": "CBF1001",
+      "section": "1",
+      "activity": "Catedra",
+      "teacher": "LAVIN ROBERTO OSVALDO",
+      "room_type_req": "Sala_Grande_Proyector",
+      "seats": 20
+    },
+    {
+      "course": "CBF1001",
+      "section": "1",
+      "activity": "Laboratorio",
+      "teacher": "AYUDANTE_LAB_CO1",
+      "room_type_req": "Lab_Fisica",
+      "seats": 20
+    },
+    {
+      "course": "CBF1001",
+      "section": "1",
+      "activity": "Ayudantia",
+      "teacher": "AYUDANTE_CO1",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 20
+    },
+    {
+      "course": "CIT2006",
+      "section": "1",
+      "activity": "Catedra",
+      "teacher": "ORTIZ YERKO MIGUEL",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 35
+    },
+    {
+      "course": "CIT2006",
+      "section": "1",
+      "activity": "Laboratorio",
+      "teacher": "SUCHAN KAROL MARCIN",
+      "room_type_req": "Lab_Computo",
+      "seats": 35
+    },
+    {
+      "course": "CIT2006",
+      "section": "1",
+      "activity": "Ayudantia",
+      "teacher": "AYUDANTE_ED2",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 35
+    },
+    {
+      "course": "CIT2114",
+      "section": "1",
+      "activity": "Catedra",
+      "teacher": "RUMINOT NICOLÁS ALBERTO",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 21
+    },
+    {
+      "course": "CIT2114",
+      "section": "1",
+      "activity": "Laboratorio",
+      "teacher": "MIRANDA FABIAN ANDRÉS",
+      "room_type_req": "Lab_Computo",
+      "seats": 21
+    },
+    {
+      "course": "CIT2114",
+      "section": "1",
+      "activity": "Ayudantia",
+      "teacher": "AYUDANTE_RD1",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 21
+    },
+    {
+      "course": "CIT1010",
+      "section": "2",
+      "activity": "Catedra",
+      "teacher": "LLANZA LEANDRO ANTONIO",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 40
+    },
+    {
+      "course": "CIT1010",
+      "section": "2",
+      "activity": "Ayudantia",
+      "teacher": "AYUDANTE_PA1",
+      "room_type_req": "Sala_Mediana_Proyector",
+      "seats": 40
+    }
+  ],
+  "assignment": {
+    "9": [
+      0,
+      "Sala_Grande_Proyector"
+    ],
+    "7": [
+      1,
+      "Sala_Grande_Proyector"
+    ],
+    "8": [
+      2,
+      "Sala_Grande_Proyector"
+    ],
+    "10": [
+      3,
+      "Sala_Grande_Proyector"
+    ],
+    "12": [
+      4,
+      "Sala_Grande_Proyector"
+    ],
+    "11": [
+      5,
+      "Sala_Grande_Proyector"
+    ],
+    "3": [
+      6,
+      "Sala_Grande_Proyector"
+    ],
+    "5": [
+      34,
+      "Lab_Fisica"
+    ],
+    "2": [
+      16,
+      "Sala_Grande_Proyector"
+    ],
+    "4": [
+      9,
+      "Sala_Grande_Proyector"
+    ],
+    "1": [
+      10,
+      "Sala_Grande_Proyector"
+    ],
+    "6": [
+      11,
+      "Sala_Grande_Proyector"
+    ],
+    "0": [
+      12,
+      "Sala_Grande_Proyector"
+    ],
+    "14": [
+      3,
+      "Sala_Mediana_Proyector"
+    ],
+    "13": [
+      4,
+      "Sala_Mediana_Proyector"
+    ]
+  }
+}

@@ -511,6 +511,7 @@ def main():
     parser.add_argument('--seed', type=int, default=0)
     parser.add_argument('--improve', type=int, default=200, help='Iteraciones de Búsqueda Tabú (0 para desactivar)')
     parser.add_argument('--tabu_size', type=int, default=10, help='Tamaño de la lista Tabú')
+    parser.add_argument('--output', type=str, default=None, help='Ruta al archivo JSON de salida donde se guardará el horario')
     args = parser.parse_args()
 
     if args.demo:
@@ -588,6 +589,22 @@ def main():
     print(f"Penalización total (con días consecutivos, peso={5}): {final_total_pen}")
 
     print_schedule(model, assignment)
+
+    if args.output and hard_ok:
+        print(f"\nGuardando horario generado en -> {args.output}")
+        # Creamos un formato de salida simple para el visualizador
+        # Necesita 3 cosas: los slots, los vértices (para ver detalles) y la asignación
+        try:
+            output_data = {
+                "slots": model.slots,
+                "vertices": [v.__dict__ for v in model.vertices],
+                "assignment": assignment # El dict[int, tuple(int, str)]
+            }
+            with open(args.output, 'w', encoding='utf-8') as f:
+                json.dump(output_data, f, indent=2, ensure_ascii=False)
+            print("Guardado exitosamente.")
+        except Exception as e:
+            print(f"ERROR al guardar el JSON: {e}")
 
 
 if __name__ == '__main__':

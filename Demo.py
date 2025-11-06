@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Demo: Asignación de horarios FIC-UDP con grafos y DSATUR + mejora local
+Demo: Asignación de horarios FIC-UDP con grafos y DSATUR + Búsqueda Tabú
 -----------------------------------------------------------------------------
 • Modela vértices como (curso, sección, actividad) con docente, capacidad, requisitos
   de sala y pertenencia a grupos de conflicto curricular (para evitar topes).
 • Colores = (franja_horaria, tipo_sala). Cada color tiene capacidad (número de salas
   disponibles de ese tipo) y cada tipo de sala tiene una capacidad mínima en cupos.
-• Algoritmo: DSATUR factible con restricciones duras + post‑mejora local para reducir
-  “ventanas” (soft constraint) sobre grupos de conflicto.
+• Algoritmo: 
+  1. DSATUR factible para encontrar una solución inicial que respete
+     restricciones duras (docentes, grupos, capacidad de salas, disponibilidad docente).
+  2. Búsqueda Tabú (Tabu Search) para optimizar restricciones blandas
+     (reducir “ventanas” y clases en días consecutivos).
 
 Cómo usar
 ---------
@@ -29,6 +32,10 @@ Cómo usar
        "PlanComun_3": ["CalculoIII", "CalorOndas", "Resistencia"],
        "Rezagados_A": ["Algebra", "EstructurasDatos"]
      },
+     "teacher_constraints": {                           // [NUEVO] Slots (índices) donde el docente NO está disponible
+       "Soto": [0, 1, 34],                              // Ej: Soto no puede L1, L2, V7
+       "Diaz": []
+     },
      "sections": [                                      // vértices
        {
          "course": "CalculoIII", "section": "1", "activity": "Catedra",
@@ -42,10 +49,11 @@ Salida
 ------
 • Imprime el horario agrupado por (slot, tipo sala) y métricas:
   - Cumplimiento de restricciones duras
-  - Penalización por ventanas (menor es mejor)
+  - Penalización por ventanas (total y promedio por grupo)
+  - Penalización total (incluyendo días consecutivos)
 
 Nota: Este es un prototipo didáctico. Para instancias grandes, conviene persistir y
-      ampliar las heurísticas/metaheurísticas (Tabu Search, etc.).
+      ampliar las heurísticas/metaheurísticas.
 """
 
 from __future__ import annotations
@@ -53,7 +61,7 @@ import argparse
 import json
 import math
 import random
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, deque
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Optional, Set
 
@@ -89,11 +97,13 @@ class SchedulingModel:
                  slots: List[str],
                  room_types: Dict[str, RoomType],
                  groups: Dict[str, List[str]],  # grupo -> lista de cursos que no pueden toparse
-                 vertices: List[Vertex]):
+                 vertices: List[Vertex],
+                 teacher_constraints: Dict[str, Set[int]]): # Docente -> Set de slot_idx prohibidos
         self.slots = slots
         self.room_types = room_types
         self.groups = groups
         self.vertices = vertices
+        self.teacher_constraints = teacher_constraints
 
         # Colores = (slot_idx, room_type)
         self.colors: List[Tuple[int, str]] = [
@@ -144,6 +154,11 @@ class SchedulingModel:
         rt = self.room_types[room_type]
         return rt.capacity >= v.seats
 
+    def teacher_slot_compatible(self, v: Vertex, slot_idx: int) -> bool:
+        # [NUEVO] Verifica la restricción de disponibilidad docente
+        forbidden_slots = self.teacher_constraints.get(v.teacher, set())
+        return slot_idx not in forbidden_slots
+
     # ------------------------------
     # DSATUR con capacidad por color
     # ------------------------------
@@ -179,6 +194,7 @@ class SchedulingModel:
             # Un color es factible si:
             # 1) Ningún vecino tiene la misma franja (slot_idx) (conflicto duro)
             # 2) RoomType compatible y no supera la capacidad (count)
+            # 3) [NUEVO] Docente disponible en esa franja (slot_idx)
             vtx = self.vertices[v]
 
             # slots prohibidos por vecinos ya coloreados
@@ -193,6 +209,9 @@ class SchedulingModel:
                     continue
                 if not self.room_type_compatible(vtx, rt):
                     continue
+                # [NUEVO] Chequeo de disponibilidad docente
+                if not self.teacher_slot_compatible(vtx, slot_idx):
+                    continue
                 # capacidad: ¿cuántos vértices ya usan (slot, rt)?
                 if used_color_count[(slot_idx, rt)] >= self.room_types[rt].count:
                     continue
@@ -206,7 +225,8 @@ class SchedulingModel:
             v = select_vertex()
             options = feasible_colors(v)
             if not options:
-                return None  # fallo: no hay color factible (se podría backtrackear)
+                print(f"FALLO DSATUR: No hay color factible para {self.vertices[v].key()}")
+                return None  # fallo: no hay color factible
 
             chosen = options[0]
             color_of[v] = chosen
@@ -221,9 +241,10 @@ class SchedulingModel:
         return color_of
 
     # ------------------------------
-    # Métrica soft: penalización por ventanas en grupos
+    # Métricas soft: Penalizaciones
     # ------------------------------
-    def windows_penalty(self, assignment: Dict[int, Tuple[int, str]]) -> int:
+    
+    def _calculate_windows_penalty(self, assignment: Dict[int, Tuple[int, str]]) -> int:
         # Penaliza “huecos” por grupo de conflicto a nivel de día.
         # slots están en orden, asumimos 7 por día (L1..L7, M1..M7, ...)
         # Definimos día = slot_idx // 7, bloque = slot_idx % 7
@@ -248,69 +269,158 @@ class SchedulingModel:
                     total += gaps
         return total
 
-    # ------------------------------
-    # Mejora local simple (1‑mover) para bajar ventanas
-    # ------------------------------
-    def improve_assignment(self,
-                           assignment: Dict[int, Tuple[int, str]],
-                           iters: int = 200) -> Dict[int, Tuple[int, str]]:
-        current = dict(assignment)
-        best_pen = self.windows_penalty(current)
-        used_color_count: Counter = Counter(current.values())
+    def _calculate_consecutive_days_penalty(self, assignment: Dict[int, Tuple[int, str]]) -> int:
+        # [NUEVO] Penaliza si un mismo curso tiene clases en días consecutivos
+        by_course_slots: Dict[str, List[int]] = defaultdict(list)
+        for vidx, (slot_idx, _) in assignment.items():
+            v = self.vertices[vidx]
+            by_course_slots[v.course].append(slot_idx)
 
-        for _ in range(iters):
+        total = 0
+        num_slots_per_day = 7 # Asumimos 7 bloques por día
+        for course, slots in by_course_slots.items():
+            if not slots:
+                continue
+            # Obtenemos los días únicos en que se imparte el curso
+            days = sorted(list(set(s // num_slots_per_day for s in slots)))
+            if len(days) >= 2:
+                for i in range(len(days) - 1):
+                    if days[i+1] == days[i] + 1:
+                        total += 1 # Penalización por día consecutivo
+        return total
+
+    def calculate_total_penalty(self, assignment: Dict[int, Tuple[int, str]]) -> Tuple[int, int]:
+        """
+        Calcula la penalización total ponderada (función objetivo a minimizar).
+        Retorna (penalización_total, penalización_solo_ventanas)
+        """
+        # Pesos de las restricciones blandas
+        W_WINDOWS = 1
+        W_CONSECUTIVE = 5 # Damos más peso a no tener días consecutivos
+
+        pen_windows = self._calculate_windows_penalty(assignment)
+        pen_consecutive = self._calculate_consecutive_days_penalty(assignment)
+
+        total_penalty = (W_WINDOWS * pen_windows) + (W_CONSECUTIVE * pen_consecutive)
+        
+        return total_penalty, pen_windows
+
+
+    # ------------------------------
+    # [NUEVO] Búsqueda Tabú para optimización
+    # ------------------------------
+    def tabu_search_improve(self,
+                            assignment: Dict[int, Tuple[int, str]],
+                            iters: int = 200,
+                            tabu_size: int = 10) -> Dict[int, Tuple[int, str]]:
+        """
+        Optimiza la asignación usando Búsqueda Tabú para minimizar la penalización total.
+        """
+        current_assignment = dict(assignment)
+        best_assignment = dict(assignment)
+        (best_penalty, _) = self.calculate_total_penalty(best_assignment)
+        
+        used_color_count: Counter = Counter(current_assignment.values())
+        
+        # Lista Tabú: almacena movimientos (vertice, old_color)
+        # Un movimiento (v, c) significa que 'v' no puede volver a 'c'
+        tabu_list = deque(maxlen=tabu_size)
+
+        print(f"Iniciando Búsqueda Tabú (Penalización inicial: {best_penalty})...")
+
+        for k in range(iters):
+            best_move = None # (v, new_color, new_penalty)
+            best_move_penalty = float('inf')
+
+            # Explorar vecinos (1-movimiento)
             vids = list(range(len(self.vertices)))
             random.shuffle(vids)
-            improved = False
-            for v in vids:
-                old_color = current[v]
-                # construir "vecinos->slots prohibidos" dinámicamente
-                neighbor_slots = {current[u][0] for u in self.adj[v] if u in current}
 
-                # probar colores alternativos
+            for v in vids[:50]: # Explorar un subconjunto aleatorio de vértices por iteración
+                old_color = current_assignment[v]
+                vtx = self.vertices[v]
+                
+                # Slots prohibidos por vecinos (hard constraint)
+                neighbor_slots = {current_assignment[u][0] for u in self.adj[v] if u in current_assignment}
+
+                # Probar colores alternativos
                 candidates = []
                 for color in self.colors:
                     slot_idx, rt = color
+                    if color == old_color:
+                        continue
+                    # --- Chequeo de restricciones duras ---
                     if slot_idx in neighbor_slots:
                         continue
-                    if not self.room_type_compatible(self.vertices[v], rt):
+                    if not self.room_type_compatible(vtx, rt):
                         continue
-                    if color == old_color:
+                    if not self.teacher_slot_compatible(vtx, slot_idx):
                         continue
                     if used_color_count[color] >= self.room_types[rt].count:
                         continue
+                    
                     candidates.append(color)
-
+                
                 random.shuffle(candidates)
-                for new_color in candidates[:10]:  # limitar branching
-                    # mover temporalmente
-                    current[v] = new_color
-                    used_color_count[old_color] -= 1
-                    used_color_count[new_color] += 1
 
-                    pen = self.windows_penalty(current)
-                    if pen < best_pen:
-                        best_pen = pen
-                        improved = True
-                        break
-                    else:
-                        # revertir
-                        used_color_count[new_color] -= 1
-                        used_color_count[old_color] += 1
-                        current[v] = old_color
+                for new_color in candidates[:10]: # Limitar branching
+                    # --- Evaluar el movimiento ---
+                    # 1. Aplicar movimiento temporal
+                    current_assignment[v] = new_color
+                    (new_penalty, _) = self.calculate_total_penalty(current_assignment)
+                    
+                    # 2. Revertir
+                    current_assignment[v] = old_color 
 
-                if improved:
-                    break
-            if not improved:
+                    is_tabu = (v, new_color) in tabu_list
+                    
+                    # Criterio de Aspiración: Si es el mejor global, lo aceptamos aunque sea tabú
+                    if new_penalty < best_penalty:
+                        best_move = (v, new_color, new_penalty)
+                        best_move_penalty = new_penalty
+                        break # Encontramos un nuevo óptimo global
+
+                    # Movimiento No Tabú: Lo consideramos si es el mejor de esta iteración
+                    elif not is_tabu:
+                        if new_penalty < best_move_penalty:
+                            best_move = (v, new_color, new_penalty)
+                            best_move_penalty = new_penalty
+                
+                if best_move and best_move_penalty < best_penalty:
+                    break # Salir del bucle de vértices si encontramos un nuevo global
+            
+            if not best_move:
+                # No se encontraron movimientos válidos
                 break
-        return current
+
+            # --- Realizar el mejor movimiento encontrado (Tabú o no) ---
+            v, new_color, new_penalty = best_move
+            old_color = current_assignment[v]
+
+            # Aplicar el movimiento
+            current_assignment[v] = new_color
+            used_color_count[old_color] -= 1
+            used_color_count[new_color] += 1
+            
+            # Añadir el movimiento *inverso* a la lista tabú
+            # (No mover 'v' de vuelta a 'old_color' por un tiempo)
+            tabu_list.append((v, old_color))
+
+            # Actualizar el mejor global si es necesario
+            if new_penalty < best_penalty:
+                best_penalty = new_penalty
+                best_assignment = dict(current_assignment)
+                print(f"  Iter {k+1}/{iters}: Nueva mejor penalización = {best_penalty}")
+
+        print(f"Búsqueda Tabú finalizada. Penalización final: {best_penalty}")
+        return best_assignment
 
 
 # ------------------------------
 # Utilidades de E/S y demo
 # ------------------------------
 
-def demo_instance() -> Tuple[List[str], Dict[str, RoomType], Dict[str, List[str]], List[Vertex]]:
+def demo_instance() -> Tuple[List[str], Dict[str, RoomType], Dict[str, List[str]], List[Vertex], Dict[str, Set[int]]]:
     # 35 bloques: L1..L7, M1..M7, W1..W7, J1..J7, V1..V7
     days = ['L', 'M', 'W', 'J', 'V']
     slots = [f"{d}{i}" for d in days for i in range(1, 8)]
@@ -336,10 +446,19 @@ def demo_instance() -> Tuple[List[str], Dict[str, RoomType], Dict[str, List[str]
         Vertex('EstructurasDatos', '1', 'Laboratorio', 'Lagos', 'Lab_PC', 35),
     ]
 
-    return slots, room_types, groups, sections
+    # [NUEVO] Restricciones de docentes (mapa de 'teacher_name' -> set de slot_idx prohibidos)
+    teacher_constraints = {
+        'Soto': {0, 1, 34}, # Soto no puede L1, L2, V7
+        'Diaz': {10, 11, 12, 13}, # Diaz no puede M4, M5, M6, M7
+        'Perez': set(),
+        'Rojas': set(),
+        'Lagos': set()
+    }
+
+    return slots, room_types, groups, sections, teacher_constraints
 
 
-def load_from_json(path: str) -> Tuple[List[str], Dict[str, RoomType], Dict[str, List[str]], List[Vertex]]:
+def load_from_json(path: str) -> Tuple[List[str], Dict[str, RoomType], Dict[str, List[str]], List[Vertex], Dict[str, Set[int]]]:
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
@@ -358,7 +477,13 @@ def load_from_json(path: str) -> Tuple[List[str], Dict[str, RoomType], Dict[str,
             seats=int(s['seats'])
         ))
 
-    return slots, room_types, groups, sections
+    # [NUEVO] Cargar restricciones de docentes
+    teacher_constraints_raw = data.get('teacher_constraints', {})
+    teacher_constraints = {
+        t: set(slots_idx) for t, slots_idx in teacher_constraints_raw.items()
+    }
+
+    return slots, room_types, groups, sections, teacher_constraints
 
 
 def print_schedule(model: SchedulingModel, assignment: Dict[int, Tuple[int, str]]):
@@ -380,54 +505,87 @@ def print_schedule(model: SchedulingModel, assignment: Dict[int, Tuple[int, str]
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Demo de asignación de horarios UDP")
+    parser = argparse.ArgumentParser(description="Demo de asignación de horarios UDP con Búsqueda Tabú")
     parser.add_argument('--demo', action='store_true', help='Ejecutar con datos de ejemplo')
     parser.add_argument('--input', type=str, default=None, help='Ruta a JSON de entrada')
     parser.add_argument('--seed', type=int, default=0)
-    parser.add_argument('--improve', type=int, default=200, help='Iteraciones de mejora local (0 para desactivar)')
+    parser.add_argument('--improve', type=int, default=200, help='Iteraciones de Búsqueda Tabú (0 para desactivar)')
+    parser.add_argument('--tabu_size', type=int, default=10, help='Tamaño de la lista Tabú')
     args = parser.parse_args()
 
     if args.demo:
-        slots, room_types, groups, sections = demo_instance()
+        slots, room_types, groups, sections, teacher_constraints = demo_instance()
     elif args.input:
-        slots, room_types, groups, sections = load_from_json(args.input)
+        slots, room_types, groups, sections, teacher_constraints = load_from_json(args.input)
     else:
         print("Debe usar --demo o --input <archivo.json>")
         return
 
-    model = SchedulingModel(slots, room_types, groups, sections)
+    model = SchedulingModel(slots, room_types, groups, sections, teacher_constraints)
 
+    print("Ejecutando DSATUR para encontrar solución inicial factible...")
     assignment = model.dsatur_schedule(seed=args.seed)
     if assignment is None:
-        print("No se encontró asignación factible con DSATUR (probar otra semilla o más salas).")
+        print("No se encontró asignación factible con DSATUR (probar otra semilla o más salas/menos restricciones).")
         return
 
-    base_pen = model.windows_penalty(assignment)
+    (base_total_pen, base_windows_pen) = model.calculate_total_penalty(assignment)
+    
     if args.improve > 0:
-        improved = model.improve_assignment(assignment, iters=args.improve)
-        imp_pen = model.windows_penalty(improved)
-        if imp_pen <= base_pen:
+        improved = model.tabu_search_improve(assignment, iters=args.improve, tabu_size=args.tabu_size)
+        (imp_total_pen, imp_windows_pen) = model.calculate_total_penalty(improved)
+        
+        # Usamos la solución mejorada solo si es estrictamente mejor
+        if imp_total_pen < base_total_pen:
             assignment = improved
-            base_pen = imp_pen
+            final_total_pen = imp_total_pen
+            final_windows_pen = imp_windows_pen
+        else:
+            final_total_pen = base_total_pen
+            final_windows_pen = base_windows_pen
+            print("La Búsqueda Tabú no encontró una solución mejor que la inicial de DSATUR.")
+    else:
+        final_total_pen = base_total_pen
+        final_windows_pen = base_windows_pen
 
-    # Reporte
+    # --- Reporte Final ---
     hard_ok = True
-    # Verificar restricciones duras: (1) vecinos en distinto slot, (2) capacidad de color
+    # Verificar restricciones duras: (1) vecinos en distinto slot, (2) capacidad de color, (3) disponibilidad docente
     used_count = Counter(assignment.values())
     for color, u in used_count.items():
-        slot_idx, rt = color
-        if u > model.room_types[rt].count:
+        if u > model.room_types[color[1]].count:
+            print(f"ERROR HARD: Capacidad de color excedida para {color}")
             hard_ok = False
             break
+            
     for v in range(len(sections)):
+        vtx = model.vertices[v]
+        slot_idx, rt = assignment[v]
+        
+        # Chequeo docente
+        if not model.teacher_slot_compatible(vtx, slot_idx):
+             print(f"ERROR HARD: {vtx.key()} asignado a docente {vtx.teacher} en slot prohibido {slot_idx}")
+             hard_ok = False
+             break
+        
+        # Chequeo vecinos
         for u in model.adj[v]:
-            if u < v:
-                continue
+            if u < v: continue
             if assignment[v][0] == assignment[u][0]:  # mismo slot (tope)
+                print(f"ERROR HARD: Tope entre {vtx.key()} y {model.vertices[u].key()}")
                 hard_ok = False
                 break
-    print(f"\nRestricciones duras OK: {hard_ok}")
-    print(f"Penalización por ventanas (menor es mejor): {base_pen}")
+        if not hard_ok: break
+
+    print(f"\n--- MÉTRICAS DE CALIDAD (Menor es mejor) ---")
+    print(f"Restricciones duras OK: {hard_ok}")
+    
+    num_groups = len(model.groups)
+    avg_pen = (final_windows_pen / num_groups) if num_groups > 0 else 0
+    
+    print(f"Penalización por ventanas (total): {final_windows_pen}")
+    print(f"Penalización por ventanas (promedio por grupo): {avg_pen:.2f}")
+    print(f"Penalización total (con días consecutivos, peso={5}): {final_total_pen}")
 
     print_schedule(model, assignment)
 

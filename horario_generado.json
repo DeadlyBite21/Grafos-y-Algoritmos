@@ -159,65 +159,65 @@
     }
   ],
   "assignment": {
+    "10": [
+      25,
+      "Sala_Mediana_Proyector"
+    ],
+    "2": [
+      26,
+      "Sala_Grande_Proyector"
+    ],
+    "0": [
+      2,
+      "Sala_Grande_Proyector"
+    ],
     "9": [
+      28,
+      "Lab_Computo"
+    ],
+    "12": [
+      22,
+      "Sala_Grande_Proyector"
+    ],
+    "13": [
+      27,
+      "Sala_Mediana_Proyector"
+    ],
+    "5": [
+      24,
+      "Lab_Fisica"
+    ],
+    "11": [
       0,
+      "Sala_Mediana_Proyector"
+    ],
+    "4": [
+      8,
+      "Sala_Grande_Proyector"
+    ],
+    "6": [
+      9,
+      "Sala_Grande_Proyector"
+    ],
+    "8": [
+      15,
+      "Lab_Computo"
+    ],
+    "3": [
+      23,
+      "Sala_Grande_Proyector"
+    ],
+    "1": [
+      16,
+      "Sala_Mediana_Proyector"
+    ],
+    "14": [
+      13,
       "Sala_Grande_Proyector"
     ],
     "7": [
       1,
-      "Sala_Grande_Proyector"
-    ],
-    "8": [
-      2,
-      "Sala_Grande_Proyector"
-    ],
-    "10": [
-      3,
-      "Sala_Grande_Proyector"
-    ],
-    "12": [
-      4,
-      "Sala_Grande_Proyector"
-    ],
-    "11": [
-      5,
-      "Sala_Grande_Proyector"
-    ],
-    "3": [
-      6,
-      "Sala_Grande_Proyector"
-    ],
-    "5": [
-      34,
-      "Lab_Fisica"
-    ],
-    "2": [
-      16,
-      "Sala_Grande_Proyector"
-    ],
-    "4": [
-      9,
-      "Sala_Grande_Proyector"
-    ],
-    "1": [
-      10,
-      "Sala_Grande_Proyector"
-    ],
-    "6": [
-      11,
-      "Sala_Grande_Proyector"
-    ],
-    "0": [
-      12,
-      "Sala_Grande_Proyector"
-    ],
-    "14": [
-      3,
-      "Sala_Mediana_Proyector"
-    ],
-    "13": [
-      4,
-      "Sala_Mediana_Proyector"
+      "Lab_Computo"
     ]
   }
 }

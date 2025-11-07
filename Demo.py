@@ -129,17 +129,54 @@ class SchedulingModel:
                     self.adj[a].add(b)
                     self.adj[b].add(a)
 
-        # 2) Conflictos por grupos curriculares (cursos en el mismo grupo no pueden toparse)
-        #    Conectamos todos los vértices cuyos 'course' estén dentro del mismo grupo.
+        # 2) Conflictos por grupos curriculares (NUEVA LÓGICA)
+        
+        # Primero, procesamos los grupos para encontrar componentes conectados
+        # (grupos que se deben fusionar porque comparten cursos)
+        course_to_groups: Dict[str, List[str]] = defaultdict(list)
+        for gname, course_list in self.groups.items():
+            for course in course_list:
+                course_to_groups[course].append(gname)
+
+        # Ahora, usamos un simple BFS/DFS para encontrar los "super-grupos"
+        merged_groups: List[Set[str]] = []
+        visited_groups = set()
+
+        for gname in self.groups.keys():
+            if gname in visited_groups:
+                continue
+            
+            # Nuevo super-grupo
+            current_super_group_courses: Set[str] = set()
+            q = deque([gname]) # 'deque' ya está importado en la línea 41
+            visited_groups.add(gname)
+
+            while q:
+                current_gname = q.popleft()
+                courses_in_group = self.groups[current_gname]
+                current_super_group_courses.update(courses_in_group)
+
+                # Encontrar otros grupos conectados por estos cursos
+                for course in courses_in_group:
+                    for neighbor_gname in course_to_groups[course]:
+                        if neighbor_gname not in visited_groups:
+                            visited_groups.add(neighbor_gname)
+                            q.append(neighbor_gname)
+            
+            merged_groups.append(current_super_group_courses)
+
+        # 'merged_groups' ahora contiene sets de cursos que realmente no pueden toparse
+        
         by_course: Dict[str, List[int]] = defaultdict(list)
         for i, v in enumerate(self.vertices):
             by_course[v.course].append(i)
 
-        for gname, course_list in self.groups.items():
-            # list of vertex indices that belong to any of the courses in this group
+        # 3) Construir la clique para cada "super-grupo"
+        for course_set in merged_groups:
             group_vertices: List[int] = []
-            for c in course_list:
+            for c in course_set:
                 group_vertices.extend(by_course.get(c, []))
+            
             # clique entre ellos
             for i in range(len(group_vertices)):
                 for j in range(i + 1, len(group_vertices)):
@@ -153,7 +190,7 @@ class SchedulingModel:
     def room_type_compatible(self, v: Vertex, room_type: str) -> bool:
         rt = self.room_types[room_type]
         return rt.capacity >= v.seats
-
+    
     def teacher_slot_compatible(self, v: Vertex, slot_idx: int) -> bool:
         # [NUEVO] Verifica la restricción de disponibilidad docente
         forbidden_slots = self.teacher_constraints.get(v.teacher, set())

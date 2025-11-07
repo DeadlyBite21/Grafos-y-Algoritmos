@@ -105,12 +105,11 @@ def main():
             if len(events) == 0:
                 # Celda vacía (con 3 líneas para altura uniforme)
                 row.append('\n\n')
-            elif len(events) == 1:
-                # Celda con un evento
-                row.append(events[0])
             else:
-                # Múltiples eventos en un bloque (TOPE)
-                row.append(f"[MÚLTIPLES ASIGNACIONES]\n({len(events)} eventos)\n(Revisar tope)")
+                # **CAMBIO**: En lugar de marcar un error si hay más de 1 evento,
+                # los unimos con un separador. Esto es correcto porque
+                # el algoritmo los asignó a diferentes tipos de sala.
+                row.append("\n------------------\n".join(events))
         cell_text.append(row)
 
     # --- 4. Generar la Imagen con Matplotlib ---
@@ -152,9 +151,10 @@ def main():
             cell.set_facecolor('white')
             cell.set_width(0.18) # Ancho uniforme para columnas
             
-            # Resaltar topes en rojo
-            if '[MÚLTIPLES ASIGNACIONES]' in cell.get_text().get_text():
-                cell.set_text_props(color='red')
+            # **CAMBIO**: Eliminamos la lógica que pintaba de rojo
+            # la celda, ya que no es un error.
+            # if '[MÚLTIPLES ASIGNACIONES]' in cell.get_text().get_text():
+            #     cell.set_text_props(color='red')
     
     try:
         # Guardar la figura
